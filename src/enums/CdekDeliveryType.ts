@@ -1,0 +1,11 @@
+export const enum CdekDeliveryType {
+  DOOR_DOOR = 1,
+  DOOR_OFFICE = 2,
+  OFFICE_DOOR = 3,
+  OFFICE_OFFICE = 4,
+  DOOR_PICKUP = 6,
+  OFFICE_PICKUP = 7,
+  PICKUP_DOOR = 8,
+  PICKUP_OFFICE = 9,
+  PICKUP_PICKUP = 10,
+}
