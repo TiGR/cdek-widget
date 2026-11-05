@@ -73,3 +73,12 @@ Checked by comparing the change between our builds with the change between the p
 
 Building with `vite build --outDir <elsewhere>` gives stale typings (the dts rollup ignores the override);
 use plain `npm run build`.
+
+**CSS reset (fixed after 4.1.0).** The restored `uno.config.ts` had lost the Tailwind reset
+(`@unocss/reset/tailwind.css`) that upstream adds as a preflight, so every build from these sources lacked the
+per-component reset (`p[data-v-…]{margin:0}`, borders, line-height, …) and host-page styles leaked into the
+widget. It is now a small preset placed before `presetUno`, which reproduces the published order. Compared
+with the published 4.1.0 bundle after normalising (scope ids, declaration order, quoting), the reset and
+variable rules match; the only differences are minifier output (`transparent` vs `rgb(0 0 0 / 0)`, an
+`-o-tab-size` prefix, merged selectors). JS declaration comparisons don't cover CSS: compare the injected
+stylesheet too.
