@@ -53,6 +53,12 @@ export default defineConfig({
     },
   ],
   presets: [
+    // the Tailwind reset, scoped to each component by the vue-scoped mode like everything else;
+    // a preset (not config preflights) so it comes before the presetUno variables, as in the published bundle
+    {
+      name: 'tailwind-reset',
+      preflights: [{ getCSS: () => fs.readFileSync('./node_modules/@unocss/reset/tailwind.css', 'utf-8') }],
+    },
     presetUno({ important: true }),
     presetIcons({
       scale: 1.2,
