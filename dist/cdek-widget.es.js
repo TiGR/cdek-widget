@@ -17914,9 +17914,9 @@ const _sfc_main$2 = /* @__PURE__ */ defineComponent({
         return t("error");
       }
       const serviceMajorVersion = Number(serviceVersion.value.split(".")[0]);
-      const widgetMajorVersion = Number("4.1.0-ext.1".split(".")[0]);
+      const widgetMajorVersion = Number("4.1.0-ext.2".split(".")[0]);
       const messageKey = serviceMajorVersion > widgetMajorVersion ? "updateWidget" : "updateService";
-      return t(messageKey, { serviceVersion: serviceVersion.value, widgetVersion: "4.1.0-ext.1" });
+      return t(messageKey, { serviceVersion: serviceVersion.value, widgetVersion: "4.1.0-ext.2" });
     });
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock("div", _hoisted_1, [
@@ -20956,7 +20956,7 @@ class CdekApi extends AbstractApi {
     });
   }
   ensureCompatibleServiceVersion(serviceVersion) {
-    if (typeof serviceVersion !== "string" || serviceVersion.split(".")[0] === "4.1.0-ext.1".split(".")[0]) {
+    if (typeof serviceVersion !== "string" || serviceVersion.split(".")[0] === "4.1.0-ext.2".split(".")[0]) {
       return;
     }
     map(this.pinia).$patch({
@@ -20968,6 +20968,8 @@ class CdekApi extends AbstractApi {
   // CDEK API delivery point -> iOffice; weights come in kilograms
   formatOffices(offices) {
     return offices.map((e) => ({
+      // @ext: keep fields a custom service adds (as with the offices option); the known ones are overwritten below
+      ...e,
       city_code: e.location.city_code,
       city: e.location.city,
       type: e.type,
@@ -21536,7 +21538,7 @@ class Widget {
         if (store.uiLoadLocksCounter > 0)
           return;
         if (store.debug) {
-          console.debug(`[CDEK] Widget ${"4.1.0-ext.1"} has been loaded`);
+          console.debug(`[CDEK] Widget ${"4.1.0-ext.2"} has been loaded`);
         }
         (_a = this.params.onReady) == null ? void 0 : _a.bind(this)();
       });

@@ -45,7 +45,14 @@ Render hooks (`officeDescription`, `officeFooter`):
 - errors are caught and logged, the widget keeps working.
 
 `iExtensionContext`: `{ mode, office, tariffs, selectedTariff, selected, lang, currency }`.
-`office` keeps any extra fields passed through `offices` / `updateOffices()`.
+`office` keeps any extra fields passed through `offices` / `updateOffices()` or returned by the service
+(`action=offices` / `byCoordinate`, see below).
+
+## Service responses
+
+Offices returned by the service (`officesRaw` too) are in the CDEK API delivery point format. Upstream keeps only the
+fields it knows; this branch also keeps any other top-level fields, so a custom service can add its own data
+(e.g. `directions`) and get it back in the hooks and in `onChoose`.
 
 Without a hook, the widget behaves exactly like upstream (cluster clicks are ignored).
 
@@ -81,6 +88,7 @@ each marked with `// @ext` or `<!-- @ext: ... -->` (`grep -rn '@ext' src`):
 | `src/components/OfficeExtendedInfo.vue` | `ExtensionHost` for `officeDescription` (`v-else` added to the original block) and `officeFooter` after `TariffInfo` |
 | `src/components/TariffInfo.vue`       | price via `usePriceFormatter()`; `data-part` attributes                |
 | `src/components/MapComponent.vue`     | `useClusterClick(map)`; cluster `data-part`, cursor and `@click`       |
+| `src/api/CdekApi.ts`                  | `formatOffices()` spreads the source item first, keeping extra fields  |
 | `package.json`, `package-lock.json`   | version suffix `-ext.<n>`                                              |
 
 ## Upgrading to a new upstream release

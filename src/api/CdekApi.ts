@@ -279,6 +279,8 @@ export default class CdekApi extends AbstractApi {
   // CDEK API delivery point -> iOffice; weights come in kilograms
   private formatOffices(offices: any[]): iOffice[] {
     return offices.map((e) => ({
+      // @ext: keep fields a custom service adds (as with the offices option); the known ones are overwritten below
+      ...e,
       city_code: e.location.city_code,
       city: e.location.city,
       type: e.type,
