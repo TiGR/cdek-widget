@@ -1,4 +1,5 @@
 import axios, { AxiosHeaders } from 'axios';
+import type { Pinia } from 'pinia';
 import core from '@/stores/core';
 import map from '@/stores/map';
 import search from '@/stores/search';
@@ -21,8 +22,8 @@ export default class CdekApi extends AbstractApi {
 
   private readonly servicePath: string;
 
-  constructor(servicePath: string) {
-    super();
+  constructor(servicePath: string, pinia: Pinia) {
+    super(pinia);
     this.getOfficesAbort = this.getPriceAbort = this.getOfficesByCoordinateAbort = null;
     this.servicePath = servicePath;
   }
@@ -40,7 +41,7 @@ export default class CdekApi extends AbstractApi {
   }
 
   async getPrice(targetLocation?: { code?: number; address?: string; postal_code?: string | null; country_code?: string }) {
-    const coreStorage = core();
+    const coreStorage = core(this.pinia);
 
     if (coreStorage.params.tariff) {
       if (coreStorage.debug) {
@@ -93,7 +94,7 @@ export default class CdekApi extends AbstractApi {
 
       console.error('[CDEK] Service error', e);
 
-      if (map().mapLoadError === YandexMapErrorCode.SERVICE_VERSION_MISMATCH) {
+      if (map(this.pinia).mapLoadError === YandexMapErrorCode.SERVICE_VERSION_MISMATCH) {
         throw e;
       }
 
@@ -102,8 +103,8 @@ export default class CdekApi extends AbstractApi {
   }
 
   async getOffices(): Promise<iOffice[]> {
-    const searchStorage = search();
-    const coreStorage = core();
+    const searchStorage = search(this.pinia);
+    const coreStorage = core(this.pinia);
 
     searchStorage.loading = true;
 
@@ -151,7 +152,7 @@ export default class CdekApi extends AbstractApi {
       .then(this.formatOffices)
       .catch((e) => {
         if (axios.isCancel(e)) {
-          if (core().debug) {
+          if (core(this.pinia).debug) {
             console.debug('[CDEK] Offices request cancelled');
           }
 
@@ -160,11 +161,11 @@ export default class CdekApi extends AbstractApi {
 
         console.error('[CDEK] Service error', e);
 
-        if (map().mapLoadError === YandexMapErrorCode.SERVICE_VERSION_MISMATCH) {
+        if (map(this.pinia).mapLoadError === YandexMapErrorCode.SERVICE_VERSION_MISMATCH) {
           throw e;
         }
 
-        map().mapLoadError = YandexMapErrorCode.SERVICE_ERROR;
+        map(this.pinia).mapLoadError = YandexMapErrorCode.SERVICE_ERROR;
 
         return [];
       });
@@ -179,8 +180,8 @@ export default class CdekApi extends AbstractApi {
   }
 
   async getOfficesByCoordinate(params: Record<string, number>): Promise<iOffice[]> {
-    const searchStorage = search();
-    const coreStorage = core();
+    const searchStorage = search(this.pinia);
+    const coreStorage = core(this.pinia);
 
     searchStorage.loading = true;
 
@@ -217,7 +218,7 @@ export default class CdekApi extends AbstractApi {
       return this.formatOffices(officeList);
     }).catch((e) => {
       if (axios.isCancel(e)) {
-        if (core().debug) {
+        if (core(this.pinia).debug) {
           console.debug('[CDEK] Offices by coordinate request cancelled');
         }
 
@@ -226,11 +227,11 @@ export default class CdekApi extends AbstractApi {
 
       console.error('[CDEK] Service error', e);
 
-      if (map().mapLoadError === YandexMapErrorCode.SERVICE_VERSION_MISMATCH) {
+      if (map(this.pinia).mapLoadError === YandexMapErrorCode.SERVICE_VERSION_MISMATCH) {
         throw e;
       }
 
-      map().mapLoadError = YandexMapErrorCode.SERVICE_ERROR;
+      map(this.pinia).mapLoadError = YandexMapErrorCode.SERVICE_ERROR;
 
       return [];
     });
@@ -251,7 +252,7 @@ export default class CdekApi extends AbstractApi {
   private async fetchOfficePage(additionalParams: Record<string, boolean>, pageNumber: number, sizeNumber: number | null) {
     return axios.get(this.servicePath, {
       params: {
-        ...search().filters,
+        ...search(this.pinia).filters,
         ...additionalParams,
         action: 'offices',
         page: pageNumber,
@@ -267,7 +268,7 @@ export default class CdekApi extends AbstractApi {
       return;
     }
 
-    map().$patch({
+    map(this.pinia).$patch({
       mapLoadError: YandexMapErrorCode.SERVICE_VERSION_MISMATCH,
       serviceVersion,
     });
@@ -301,7 +302,7 @@ export default class CdekApi extends AbstractApi {
 
   // splits tariffs by delivery target, keeping only the codes allowed by the tariffs option
   private mapTariffsWithTypes(tariffs: iTariff[]) {
-    const coreStorage = core();
+    const coreStorage = core(this.pinia);
     const priceData: { office: iTariff[]; door: iTariff[]; pickup: iTariff[] } = {
       office: [],
       door: [],
@@ -343,8 +344,8 @@ export default class CdekApi extends AbstractApi {
 
   // offices passed via the offices/officesRaw options are filtered locally
   private loadLocalOffices(): iOffice[] {
-    const searchStorage = search();
-    const coreStorage = core();
+    const searchStorage = search(this.pinia);
+    const coreStorage = core(this.pinia);
 
     const offices: iOffice[] = coreStorage.params.officesRaw
       ? this.formatOffices(

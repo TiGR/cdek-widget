@@ -60,3 +60,16 @@ Checked by comparing the change between our builds with the change between the p
   `ErrorScreen` asks to update the widget or the service. A missing header is accepted. Delta matches the
   published one; the only extra noise is module order (the `YandexMapErrorCode` enum is emitted elsewhere,
   since our import graph already differs from the original one, see the 3.11.1 notes).
+- **4.1.0**: one Pinia per widget instance (`createPinia()` in the constructor, passed to the API classes
+  through `AbstractApi`; the shared `src/stores/index.ts` is gone), and a real `destroy()`: watchers,
+  subscriptions and debounces created in `init()` are collected in `disposers`, `isDestroyed` stops async
+  callbacks, pending requests are cancelled and the stores disposed. Store-to-price/geocoder reactions moved
+  from `$subscribe` mutation-type checks to `watch()` on `exactOffice`/`pointInfo`/`exactPoint`.
+  `vue-yandex-maps` 2.1.2 → 2.3.3 (identified from the bundled code), which also needs
+  `@yandex/ymaps3-types` 1.x and fixes the `vue-tsc` errors caused by two copies of those types.
+  Every top-level declaration that matched the published 4.0.0 still matches; `Widget` and `CdekApi` differ
+  only by the comments listed above and the "has been loaded" log (a template literal here, a plain string
+  upstream). `cdek-widget.es.d.ts` is byte-identical to the published one.
+
+Building with `vite build --outDir <elsewhere>` gives stale typings (the dts rollup ignores the override);
+use plain `npm run build`.

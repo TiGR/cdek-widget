@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { Pinia } from 'pinia';
 import { tap } from 'lodash-es';
 import type { LngLat } from '@yandex/ymaps3-types/common/types';
 import config from '@/config';
@@ -13,8 +14,8 @@ export default class YandexApi extends AbstractApi {
 
   private geocodeCoordinatesAbort: AbortController | null;
 
-  constructor(apiKey: string, lang: string) {
-    super();
+  constructor(apiKey: string, lang: string, pinia: Pinia) {
+    super(pinia);
     this.geocodeStringAbort = this.geocodeCoordinatesAbort = null;
     this.geocodeSrc = tap(new URL(`https://geocode-maps.yandex.ru/${config.map.geocoderVersion}/`), (url) => {
       url.searchParams.set('apikey', apiKey);
@@ -31,7 +32,7 @@ export default class YandexApi extends AbstractApi {
   }
 
   async geocodeString(input: string): Promise<iGeocoderResult> {
-    const coreStorage = core();
+    const coreStorage = core(this.pinia);
 
     if (input === '') {
       return {
@@ -80,7 +81,7 @@ export default class YandexApi extends AbstractApi {
   }
 
   async geocodeCoordinates(coordinates: LngLat): Promise<iGeocoderResult> {
-    const coreStorage = core();
+    const coreStorage = core(this.pinia);
 
     this.cancelGeocodeCoordinatesRequest();
     this.geocodeCoordinatesAbort = new AbortController();

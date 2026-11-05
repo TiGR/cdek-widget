@@ -1,10 +1,10 @@
 import { createApp, toRaw, watch, type App } from 'vue';
+import { createPinia, type Pinia } from 'pinia';
 import { isCancel } from 'axios';
 import { debounce } from 'lodash-es';
 import { createYmaps } from 'vue-yandex-maps';
 import type { LngLat } from '@yandex/ymaps3-types/common/types';
 import app from '@/PopupWrapper.vue';
-import { pinia } from '@/stores';
 import i18n from '@/i18n';
 import { widgetSchema } from '@/schema';
 import core from '@/stores/core';
@@ -26,6 +26,8 @@ import type { iGeocoderMember } from '@/types/iGeocoder';
 class Widget {
   private readonly params: iWidget;
 
+  private readonly pinia: Pinia;
+
   private readonly yandexApi: YandexApi;
 
   private readonly cdekApi: CdekApi;
@@ -35,6 +37,12 @@ class Widget {
   private readonly div: HTMLElement;
 
   private readonly customDiv: boolean;
+
+  // guards async callbacks created in init() from acting after destroy()
+  private isDestroyed = false;
+
+  // stop-functions for watch()/$subscribe()/$onAction()/debounce() created in init()
+  private readonly disposers: Array<() => void> = [];
 
   constructor(input: iWidget) {
     if (!(window.self instanceof Window)) {
@@ -59,8 +67,9 @@ class Widget {
       throw new Error('Can`t hide door delivery and office delivery at one time');
     }
 
-    this.yandexApi = new YandexApi(this.params.apiKey, yandexLang);
-    this.cdekApi = new CdekApi(this.params.servicePath);
+    this.pinia = createPinia();
+    this.yandexApi = new YandexApi(this.params.apiKey, yandexLang, this.pinia);
+    this.cdekApi = new CdekApi(this.params.servicePath, this.pinia);
 
     const el = window.document.getElementById(this.params.root);
 
@@ -87,7 +96,7 @@ class Widget {
     }
 
     this.app = createApp(app);
-    this.app.use(pinia).use(i18n(this.params.lang)).use(
+    this.app.use(this.pinia).use(i18n(this.params.lang)).use(
       createYmaps({
         apikey: this.params.apiKey,
         lang: yandexLang,
@@ -100,8 +109,10 @@ class Widget {
   }
 
   async updateOffices(offices: iOffice[]) {
-    const coreStore = core();
-    const mapStore = map();
+    if (this.isDestroyed) return;
+
+    const coreStore = core(this.pinia);
+    const mapStore = map(this.pinia);
 
     if (coreStore.debug) {
       console.debug('[CDEK] Force updating offices');
@@ -115,8 +126,10 @@ class Widget {
   }
 
   async updateOfficesRaw(officesRaw: any) {
-    const coreStore = core();
-    const mapStore = map();
+    if (this.isDestroyed) return;
+
+    const coreStore = core(this.pinia);
+    const mapStore = map(this.pinia);
 
     if (coreStore.debug) {
       console.debug('[CDEK] Force updating raw offices');
@@ -133,8 +146,10 @@ class Widget {
   }
 
   async updateLocation(location: any, zoom = YandexMapZoomVariants.GENERAL) {
-    const coreStore = core();
-    const mapStore = map();
+    if (this.isDestroyed) return;
+
+    const coreStore = core(this.pinia);
+    const mapStore = map(this.pinia);
 
     if (coreStore.debug) {
       console.debug('[CDEK] Force updating location');
@@ -154,7 +169,9 @@ class Widget {
   }
 
   async updateTariff(tariff: iTariff) {
-    const coreStore = core();
+    if (this.isDestroyed) return;
+
+    const coreStore = core(this.pinia);
 
     if (coreStore.debug) {
       console.debug('[CDEK] Force updating prices');
@@ -168,8 +185,10 @@ class Widget {
   }
 
   clearSelection() {
-    const coreStore = core();
-    const mapStore = map();
+    if (this.isDestroyed) return;
+
+    const coreStore = core(this.pinia);
+    const mapStore = map(this.pinia);
 
     if (coreStore.debug) {
       console.debug('[CDEK] Clearing selected point');
@@ -183,13 +202,31 @@ class Widget {
   }
 
   destroy() {
-    const coreStore = core();
-
-    if (this.app === null) {
-      throw new Error('CDEK widget is not mounted');
+    if (this.isDestroyed) {
+      return;
     }
 
+    const coreStore = core(this.pinia);
+
+    this.isDestroyed = true;
+
+    for (const dispose of this.disposers) {
+      dispose();
+    }
+
+    this.disposers.length = 0;
+
+    this.cdekApi.cancelOfficeRequest();
+    this.cdekApi.cancelOfficesByCoordinateRequest();
+    this.cdekApi.cancelPriceRequest();
+    this.yandexApi.cancelGeocodeStringRequest();
+    this.yandexApi.cancelGeocodeCoordinatesRequest();
+
     this.app.unmount();
+
+    coreStore.$dispose();
+    map(this.pinia).$dispose();
+    search(this.pinia).$dispose();
 
     if (this.customDiv) {
       if (coreStore.debug) {
@@ -205,7 +242,7 @@ class Widget {
   }
 
   open() {
-    const coreStore = core();
+    const coreStore = core(this.pinia);
 
     if (!coreStore.params.popup) {
       throw new Error('CDEK widget is not in popup');
@@ -215,7 +252,7 @@ class Widget {
   }
 
   close() {
-    const coreStore = core();
+    const coreStore = core(this.pinia);
 
     if (!coreStore.params.popup) {
       throw new Error('CDEK widget is not in popup');
@@ -225,7 +262,7 @@ class Widget {
   }
 
   addParcel(parcel: iParcel | iParcel[]) {
-    const coreStorage = core();
+    const coreStorage = core(this.pinia);
     const goods = coreStorage.params.goods;
 
     if (Array.isArray(parcel)) {
@@ -242,18 +279,18 @@ class Widget {
   }
 
   getParcels() {
-    return toRaw(core().params.goods);
+    return toRaw(core(this.pinia).params.goods);
   }
 
   resetParcels() {
-    const coreStorage = core();
+    const coreStorage = core(this.pinia);
 
     coreStorage.$patch({ params: { ...coreStorage.params, goods: [] } });
   }
 
   selectOffice(code: string) {
-    const coreStorage = core();
-    const mapStorage = map();
+    const coreStorage = core(this.pinia);
+    const mapStorage = map(this.pinia);
 
     const exactOffice = mapStorage.offices.filter((office) => office.code === code);
 
@@ -283,8 +320,8 @@ class Widget {
   private async fixBounds() {
     if (this.params.fixBounds === null) return;
 
-    const coreStorage = core();
-    const mapStorage = map();
+    const coreStorage = core(this.pinia);
+    const mapStorage = map(this.pinia);
 
     const geoData = await this.yandexApi.geocodeCoordinates(mapStorage.location.center);
 
@@ -326,9 +363,9 @@ class Widget {
   }
 
   private async init() {
-    const coreStorage = core();
-    const mapStorage = map();
-    const searchStorage = search();
+    const coreStorage = core(this.pinia);
+    const mapStorage = map(this.pinia);
+    const searchStorage = search(this.pinia);
 
     if (coreStorage.debug) {
       console.debug('[CDEK] Widget initialization started', toRaw(coreStorage.params));
@@ -349,6 +386,8 @@ class Widget {
         if (typeof this.params.defaultLocation === 'string') {
           const geoData = await this.yandexApi.geocodeString(this.params.defaultLocation);
 
+          if (this.isDestroyed) return;
+
           if (geoData.found < 1) {
             throw new Error('[CDEK] Unable to geocode default location');
           }
@@ -360,9 +399,13 @@ class Widget {
 
         await this.fixBounds();
 
+        if (this.isDestroyed) return;
+
         // without local offices they are loaded by the visible area, see debouncedLoadOfficesByBounds
         if (coreStorage.params.offices !== null || coreStorage.params.officesRaw !== null) {
           mapStorage.offices = await this.cdekApi.getOffices();
+
+          if (this.isDestroyed) return;
         }
 
         if (coreStorage.params.selected.office !== null) {
@@ -374,13 +417,17 @@ class Widget {
         }
       } finally {
         // releases the lock the core store starts with
-        coreStorage.unlockUi();
+        if (!this.isDestroyed) {
+          coreStorage.unlockUi();
+        }
       }
     };
 
     initializeLocationAndOffices().then();
 
     const debouncedLoadOfficesByBounds = debounce(async () => {
+      if (this.isDestroyed) return;
+
       if (coreStorage.params.offices !== null || coreStorage.params.officesRaw !== null) {
         return;
       }
@@ -391,18 +438,26 @@ class Widget {
       try {
         mapStorage.offices = await this.cdekApi.getOfficesByCoordinate(mapStorage.polygonBounds);
 
+        if (this.isDestroyed) return;
+
         if (coreStorage.params.selected.office !== null && mapStorage.exactOffice === null) {
           this.selectOffice(coreStorage.params.selected.office);
         }
       } catch (e) {
         if (!isCancel(e)) throw e;
       } finally {
-        searchStorage.loading = false;
+        if (!this.isDestroyed) {
+          searchStorage.loading = false;
+        }
       }
     }, 500);
 
+    this.disposers.push(() => debouncedLoadOfficesByBounds.cancel());
+
     // search field: geocodes the input, reloads offices when filters change
     const debouncedUpdate = debounce(async (input: string, forceUpdate = false) => {
+      if (this.isDestroyed) return;
+
       try {
         if (forceUpdate) {
           if (coreStorage.params.offices !== null || coreStorage.params.officesRaw !== null) {
@@ -410,25 +465,36 @@ class Widget {
           } else {
             mapStorage.offices = await this.cdekApi.getOfficesByCoordinate(mapStorage.polygonBounds);
           }
+
+          if (this.isDestroyed) return;
         }
 
-        searchStorage.searchResults = (await this.yandexApi.geocodeString(input)).members;
+        const geoData = await this.yandexApi.geocodeString(input);
+
+        if (this.isDestroyed) return;
+
+        searchStorage.searchResults = geoData.members;
       } catch (e) {
         if (!isCancel(e)) throw e;
       } finally {
-        searchStorage.loading = false;
+        if (!this.isDestroyed) {
+          searchStorage.loading = false;
+        }
       }
     }, 500);
 
-    watch(
+    this.disposers.push(() => debouncedUpdate.cancel());
+
+    const stopBoundsWatch = watch(
       () => [mapStorage.bounds.left, mapStorage.bounds.right],
       () => {
         debouncedLoadOfficesByBounds();
       },
-      { deep: true },
     );
 
-    searchStorage.$subscribe(async (mutation, state) => {
+    this.disposers.push(stopBoundsWatch);
+
+    const unsubscribeSearchStore = searchStorage.$subscribe(async (mutation, state) => {
       if (mutation.storeId !== 'search' || mutation.type !== 'patch object') {
         return;
       }
@@ -447,10 +513,16 @@ class Widget {
       await debouncedUpdate(state.value, forceUpdate);
     });
 
+    this.disposers.push(unsubscribeSearchStore);
+
     // door mode: geocodes the clicked point
     const debouncedSearch = debounce(async (coordinates: LngLat) => {
+      if (this.isDestroyed) return;
+
       try {
         const result = await this.yandexApi.geocodeCoordinates(coordinates);
+
+        if (this.isDestroyed) return;
 
         if (result.found > 0) {
           mapStorage.$patch({
@@ -460,27 +532,37 @@ class Widget {
 
         searchStorage.loading = false;
       } catch (e) {
-        if (!isCancel(e)) throw e;
+        if (!isCancel(e)) {
+          searchStorage.loading = false;
+          throw e;
+        }
       }
     }, 2000);
 
-    mapStorage.$subscribe(async (mutation, state) => {
-      if (mutation.storeId !== 'map'
-        || mutation.type !== 'direct'
-        || state.exactPoint === null
-        || (state.pointInfo !== null
-          && state.pointInfo.position[0] === state.exactPoint[0]
-          && state.pointInfo.position[1] === state.exactPoint[1])) {
-        return;
-      }
+    this.disposers.push(() => debouncedSearch.cancel());
 
-      searchStorage.loading = true;
-      this.yandexApi.cancelGeocodeCoordinatesRequest();
+    const stopExactPointWatch = watch(
+      () => [mapStorage.exactPoint, mapStorage.pointInfo] as const,
+      ([exactPoint, pointInfo]) => {
+        if (exactPoint === null
+          || (pointInfo !== null
+            && pointInfo.position[0] === exactPoint[0]
+            && pointInfo.position[1] === exactPoint[1])) {
+          return;
+        }
 
-      await debouncedSearch(state.exactPoint);
-    });
+        searchStorage.loading = true;
+        this.yandexApi.cancelGeocodeCoordinatesRequest();
+
+        debouncedSearch(exactPoint);
+      },
+    );
+
+    this.disposers.push(stopExactPointWatch);
 
     const debouncedPrice = debounce(async () => {
+      if (this.isDestroyed) return;
+
       if (mapStorage.pointInfo === null && mapStorage.exactOffice === null) {
         return;
       }
@@ -495,6 +577,8 @@ class Widget {
       try {
         const priceData = await this.cdekApi.getPrice(address);
 
+        if (this.isDestroyed) return;
+
         if (coreStorage.debug) {
           console.debug('[CDEK] Calculated prices', priceData, address);
         }
@@ -507,26 +591,30 @@ class Widget {
       }
     });
 
+    this.disposers.push(() => debouncedPrice.cancel());
+
     // a point/office was selected
-    mapStorage.$subscribe(async (mutation) => {
-      if (mutation.storeId !== 'map'
-        || mutation.type !== 'patch object'
-        || coreStorage.params.goods.length < 1
-        || coreStorage.params.from === null) {
-        return;
-      }
+    const stopMapSelectionPriceWatch = watch(
+      () => [mapStorage.exactOffice, mapStorage.pointInfo],
+      () => {
+        if (coreStorage.params.goods.length < 1 || coreStorage.params.from === null) {
+          return;
+        }
 
-      if (coreStorage.debug) {
-        console.debug('[CDEK] Catch map selection update, going price update');
-      }
+        if (coreStorage.debug) {
+          console.debug('[CDEK] Catch map selection update, going price update');
+        }
 
-      this.cdekApi.cancelPriceRequest();
+        this.cdekApi.cancelPriceRequest();
 
-      await debouncedPrice();
-    });
+        debouncedPrice();
+      },
+    );
+
+    this.disposers.push(stopMapSelectionPriceWatch);
 
     // parcels were changed
-    coreStorage.$subscribe(async (mutation, state) => {
+    const unsubscribeCoreGoodsPrice = coreStorage.$subscribe(async (mutation, state) => {
       if (mutation.storeId !== 'core'
         || mutation.type !== 'patch object'
         || state.params.goods.length < 1
@@ -539,8 +627,10 @@ class Widget {
       await debouncedPrice();
     });
 
+    this.disposers.push(unsubscribeCoreGoodsPrice);
+
     // TariffInfo/PostcodeRequestModal use $patch(fn) to signal the choice
-    coreStorage.$subscribe(async (mutation, state) => {
+    const unsubscribeSelectButton = coreStorage.$subscribe(async (mutation, state) => {
       if (mutation.storeId !== 'core'
         || mutation.type !== 'patch function'
         || (state.selectedTariff === null && !state.selected)) {
@@ -572,7 +662,9 @@ class Widget {
       this.params.onChoose?.bind(this, state.mode, toRaw(state.selectedTariff), target)();
     });
 
-    coreStorage.$onAction(({ name, store, after }) => {
+    this.disposers.push(unsubscribeSelectButton);
+
+    const unsubscribeUnlockUiAction = coreStorage.$onAction(({ name, store, after }) => {
       if (name !== 'unlockUi') return;
 
       after(() => {
@@ -585,6 +677,8 @@ class Widget {
         this.params.onReady?.bind(this)();
       });
     });
+
+    this.disposers.push(unsubscribeUnlockUiAction);
   }
 }
 
