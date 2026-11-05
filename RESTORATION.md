@@ -41,3 +41,17 @@ names they were generated from.
 - `cursor-pinter` typo in `CdekButton.vue` (the button has no pointer cursor).
 - The build embedded the whole `import.meta.env`, including a `VITE_TOKEN` (a sandbox CMS token); 3.12.0
   removed it.
+
+## Upstream releases ported after 3.11.1
+
+Each release is a merge of the upstream tag (its `dist/`, `service.php`, docs) plus the matching `src/` changes.
+Checked by comparing the change between our builds with the change between the published bundles
+(`data-v-…` scope ids normalized).
+
+- **3.11.2**: `service.php` only.
+- **3.12.0**: offices loaded by the visible map area (`action=byCoordinate`, `map.polygonBounds`) when no
+  `offices`/`officesRaw` are passed; bounds filter works with any corner order; map update debounce 2s → 0.5s;
+  init rewritten as one async `initializeLocationAndOffices()`. The Yandex fallback key now comes from `.env`
+  (`VITE_DEFAULT_KEY`). Delta matches the published one except the "Widget … has been loaded" log: the
+  published 3.12.0 still says 3.11.1 (version not bumped upstream).
+- **3.12.1**: `service.php` only.

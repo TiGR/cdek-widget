@@ -15,18 +15,24 @@ const officesPageSize = 500;
 export default class CdekApi extends AbstractApi {
   private getOfficesAbort: AbortController | null;
 
+  private getOfficesByCoordinateAbort: AbortController | null;
+
   private getPriceAbort: AbortController | null;
 
   private readonly servicePath: string;
 
   constructor(servicePath: string) {
     super();
-    this.getOfficesAbort = this.getPriceAbort = null;
+    this.getOfficesAbort = this.getPriceAbort = this.getOfficesByCoordinateAbort = null;
     this.servicePath = servicePath;
   }
 
   cancelOfficeRequest() {
     this.cancelRequest(this.getOfficesAbort, 'offices');
+  }
+
+  cancelOfficesByCoordinateRequest() {
+    this.cancelRequest(this.getOfficesByCoordinateAbort, 'officesByCoordinate');
   }
 
   cancelPriceRequest() {
@@ -157,6 +163,69 @@ export default class CdekApi extends AbstractApi {
     searchStorage.loading = false;
 
     return offices;
+  }
+
+  async getOfficesByCoordinate(params: Record<string, number>): Promise<iOffice[]> {
+    const searchStorage = search();
+    const coreStorage = core();
+
+    searchStorage.loading = true;
+
+    if (coreStorage.debug) {
+      console.debug('[CDEK] Loading points by coordinate from service', params);
+    }
+
+    const additionalParams: Record<string, boolean> = {};
+
+    if (coreStorage.params.sender) {
+      additionalParams.is_handout_only = false;
+      additionalParams.is_reception = true;
+    } else {
+      additionalParams.is_handout = true;
+    }
+
+    this.cancelOfficesByCoordinateRequest();
+    this.getOfficesByCoordinateAbort = new AbortController();
+
+    const offices = await axios.get(this.servicePath, {
+      params: {
+        ...searchStorage.filters,
+        ...additionalParams,
+        ...params,
+        action: 'byCoordinate',
+      },
+      signal: this.getOfficesByCoordinateAbort.signal,
+    }).then((r) => {
+      const data = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+      const officeList = Array.isArray(data) ? data : data?.delivery_points || data?.items || [];
+
+      return this.formatOffices(officeList);
+    }).catch((e) => {
+      if (axios.isCancel(e)) {
+        if (core().debug) {
+          console.debug('[CDEK] Offices by coordinate request cancelled');
+        }
+
+        throw e;
+      }
+
+      console.error('[CDEK] Service error', e);
+      map().mapLoadError = YandexMapErrorCode.SERVICE_ERROR;
+
+      return [];
+    });
+
+    if (coreStorage.debug) {
+      console.debug('[CDEK] Got points by coordinate', offices);
+    }
+
+    searchStorage.loading = false;
+
+    return offices;
+  }
+
+  async getOfficesByCoordinates(params: Record<string, number>): Promise<iOffice[]> {
+    return this.getOfficesByCoordinate(params);
   }
 
   private async fetchOfficePage(additionalParams: Record<string, boolean>, pageNumber: number, sizeNumber: number | null) {

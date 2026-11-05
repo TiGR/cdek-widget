@@ -100,14 +100,39 @@ export default defineStore('map', () => {
     right: config.map.defaultCenter as LngLat,
   });
 
-  const filteredOffices = computed(
-    () => packageSuitedOffices.value.filter(
-      (office) => office.location[0] <= bounds.right[0]
-        && office.location[1] >= bounds.right[1]
-        && office.location[0] >= bounds.left[0]
-        && office.location[1] <= bounds.left[1],
-    ),
-  );
+  // visible area in the shape of the service byCoordinate request
+  const polygonBounds = computed(() => {
+    const minLng = Math.min(bounds.left[0], bounds.right[0]);
+    const maxLng = Math.max(bounds.left[0], bounds.right[0]);
+    const minLat = Math.min(bounds.left[1], bounds.right[1]);
+    const maxLat = Math.max(bounds.left[1], bounds.right[1]);
+
+    return {
+      latitude_right_top: maxLat,
+      longitude_right_top: maxLng,
+      latitude_left_bottom: minLat,
+      longitude_left_bottom: minLng,
+    };
+  });
+
+  const filteredOffices = computed(() => {
+    // bounds are not known yet
+    if (bounds.left[0] === bounds.right[0] && bounds.left[1] === bounds.right[1]) {
+      return packageSuitedOffices.value;
+    }
+
+    const minLng = Math.min(bounds.left[0], bounds.right[0]);
+    const maxLng = Math.max(bounds.left[0], bounds.right[0]);
+    const minLat = Math.min(bounds.left[1], bounds.right[1]);
+    const maxLat = Math.max(bounds.left[1], bounds.right[1]);
+
+    return packageSuitedOffices.value.filter(
+      (office) => office.location[0] >= minLng
+        && office.location[0] <= maxLng
+        && office.location[1] >= minLat
+        && office.location[1] <= maxLat,
+    );
+  });
 
   const searchedOffices = computed(() => {
     if (searchStorage.value.length === 0) return [];
@@ -133,12 +158,10 @@ export default defineStore('map', () => {
     bounds.right = newBounds[1];
     location.center = updateObject.location.center;
     location.zoom = updateObject.location.zoom;
-    searchStorage.loading = false;
-  }, 2000);
+  }, 500);
 
   // YandexMapListener onUpdate handler
   const update = (updateObject: { location: { bounds: LngLat[]; center: LngLat; zoom: number } }) => {
-    searchStorage.loading = true;
     debouncedUpdate(updateObject);
   };
 
@@ -201,6 +224,7 @@ export default defineStore('map', () => {
     packageSuitedOffices,
     update,
     bounds,
+    polygonBounds,
     filteredOffices,
     fixedBounds,
     fixedParams,

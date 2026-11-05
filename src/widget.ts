@@ -1,4 +1,4 @@
-import { createApp, toRaw, type App } from 'vue';
+import { createApp, toRaw, watch, type App } from 'vue';
 import { isCancel } from 'axios';
 import { debounce } from 'lodash-es';
 import { createYmaps } from 'vue-yandex-maps';
@@ -344,43 +344,89 @@ class Widget {
       filters: this.params.forceFilters,
     });
 
-    // the store starts with one lock; together with this one they are released by
-    // the location setup and by the offices loading below
-    coreStorage.lockUi();
+    const initializeLocationAndOffices = async () => {
+      try {
+        if (typeof this.params.defaultLocation === 'string') {
+          const geoData = await this.yandexApi.geocodeString(this.params.defaultLocation);
 
-    if (typeof this.params.defaultLocation === 'string') {
-      this.yandexApi.geocodeString(this.params.defaultLocation).then((geoData) => {
-        if (geoData.found < 1) {
-          throw new Error('[CDEK] Unable to geocode default location');
+          if (geoData.found < 1) {
+            throw new Error('[CDEK] Unable to geocode default location');
+          }
+
+          mapStorage.location.center = geoData.members[0].position as LngLat;
+        } else {
+          mapStorage.location.center = this.params.defaultLocation;
         }
 
-        mapStorage.location.center = geoData.members[0].position as LngLat;
-      }).then(this.fixBounds.bind(this)).finally(coreStorage.unlockUi);
-    } else {
-      mapStorage.location.center = this.params.defaultLocation;
-      this.fixBounds().then(coreStorage.unlockUi);
-    }
+        await this.fixBounds();
 
-    this.cdekApi.getOffices().then((offices) => (mapStorage.offices = offices)).then(() => {
-      if (coreStorage.params.selected.office === null) return;
+        // without local offices they are loaded by the visible area, see debouncedLoadOfficesByBounds
+        if (coreStorage.params.offices !== null || coreStorage.params.officesRaw !== null) {
+          mapStorage.offices = await this.cdekApi.getOffices();
+        }
 
-      this.selectOffice(coreStorage.params.selected.office);
-    }).finally(coreStorage.unlockUi);
+        if (coreStorage.params.selected.office !== null) {
+          this.selectOffice(coreStorage.params.selected.office);
+        }
+      } catch (e) {
+        if (!isCancel(e)) {
+          console.error('[CDEK] Error initializing widget location/offices', e);
+        }
+      } finally {
+        // releases the lock the core store starts with
+        coreStorage.unlockUi();
+      }
+    };
+
+    initializeLocationAndOffices().then();
+
+    const debouncedLoadOfficesByBounds = debounce(async () => {
+      if (coreStorage.params.offices !== null || coreStorage.params.officesRaw !== null) {
+        return;
+      }
+
+      searchStorage.loading = true;
+      this.cdekApi.cancelOfficesByCoordinateRequest();
+
+      try {
+        mapStorage.offices = await this.cdekApi.getOfficesByCoordinate(mapStorage.polygonBounds);
+
+        if (coreStorage.params.selected.office !== null && mapStorage.exactOffice === null) {
+          this.selectOffice(coreStorage.params.selected.office);
+        }
+      } catch (e) {
+        if (!isCancel(e)) throw e;
+      } finally {
+        searchStorage.loading = false;
+      }
+    }, 500);
 
     // search field: geocodes the input, reloads offices when filters change
     const debouncedUpdate = debounce(async (input: string, forceUpdate = false) => {
       try {
         if (forceUpdate) {
-          mapStorage.offices = [];
-          mapStorage.offices = await this.cdekApi.getOffices();
+          if (coreStorage.params.offices !== null || coreStorage.params.officesRaw !== null) {
+            mapStorage.offices = await this.cdekApi.getOffices();
+          } else {
+            mapStorage.offices = await this.cdekApi.getOfficesByCoordinate(mapStorage.polygonBounds);
+          }
         }
 
         searchStorage.searchResults = (await this.yandexApi.geocodeString(input)).members;
-        searchStorage.loading = false;
       } catch (e) {
         if (!isCancel(e)) throw e;
+      } finally {
+        searchStorage.loading = false;
       }
-    }, 1000);
+    }, 500);
+
+    watch(
+      () => [mapStorage.bounds.left, mapStorage.bounds.right],
+      () => {
+        debouncedLoadOfficesByBounds();
+      },
+      { deep: true },
+    );
 
     searchStorage.$subscribe(async (mutation, state) => {
       if (mutation.storeId !== 'search' || mutation.type !== 'patch object') {
@@ -395,6 +441,7 @@ class Widget {
 
       searchStorage.loading = true;
       this.cdekApi.cancelOfficeRequest();
+      this.cdekApi.cancelOfficesByCoordinateRequest();
       this.yandexApi.cancelGeocodeStringRequest();
 
       await debouncedUpdate(state.value, forceUpdate);
