@@ -36,6 +36,8 @@ import FilterComponent from '@/components/FilterComponent.vue';
 import PostcodeRequestModal from '@/components/PostcodeRequestModal.vue';
 import GeolocationComponent from '@/components/GeolocationComponent.vue';
 import ZoomComponent from '@/components/ZoomComponent.vue';
+// @ext
+import { useClusterClick } from '@/extensions';
 
 const mapStorage = mapStore();
 const coreStorage = core();
@@ -44,6 +46,8 @@ const { t } = useI18n();
 const location = ref(mapStorage.location);
 const root = ref();
 const map = shallowRef<YMap | null>(null);
+// @ext
+const clusterClick = useClusterClick(map);
 
 // the map takes a new location only when the settings object changes
 watch(mapStorage.location, () => (location.value = { ...mapStorage.location }));
@@ -182,8 +186,11 @@ const showControl = computed(
           <PickupIcon v-else class=":uno: cursor-pointer max-w-none [transform:translate(-50%,calc(-50%-13px))]" @click.stop.prevent="selectOffice(office)" />
         </YandexMapMarker>
 
-        <template #cluster="{ length }">
+        <!-- @ext: onClusterClick -->
+        <template #cluster="{ length, coordinates, clusterer }">
           <div
+            data-part="cluster"
+            :style="clusterClick.enabled ? { cursor: 'pointer' } : undefined"
             :class="{
               ':uno: px-2': length < 10,
               ':uno: px-1': length >= 10,
@@ -192,6 +199,7 @@ const showControl = computed(
               ':uno: py-0.5': length < 100,
             }"
             class=":uno: bg-white border-brand-primary-active border-2 rounded-full text-text-primary font-sans text-sm"
+            @click="clusterClick.onClick($event, coordinates, clusterer.features)"
           >
             {{ length }}
           </div>

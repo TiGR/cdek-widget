@@ -22,6 +22,8 @@ import type { iOffice } from '@/types/iOffice';
 import type { iParcel } from '@/types/iParcel';
 import type { iTariff } from '@/types/iTariff';
 import type { iGeocoderMember } from '@/types/iGeocoder';
+// @ext
+import { extensionsKey } from '@/extensions';
 
 class Widget {
   private readonly params: iWidget;
@@ -96,6 +98,8 @@ class Widget {
     }
 
     this.app = createApp(app);
+    // @ext
+    this.app.provide(extensionsKey, input.extensions ?? {});
     this.app.use(this.pinia).use(i18n(this.params.lang)).use(
       createYmaps({
         apikey: this.params.apiKey,
@@ -681,5 +685,8 @@ class Widget {
     this.disposers.push(unsubscribeUnlockUiAction);
   }
 }
+
+// @ext
+export type * from '@/extensions/types';
 
 export default Widget;

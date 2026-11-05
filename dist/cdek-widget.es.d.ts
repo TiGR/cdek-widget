@@ -1,6 +1,7 @@
 import { AnyObject } from 'yup';
 import { InferType } from 'yup';
 import { LngLat } from '@yandex/ymaps3-types/common/types';
+import { LngLatBounds } from '@yandex/ymaps3-types/common/types';
 import { Maybe } from 'yup';
 import { ObjectSchema } from 'yup';
 
@@ -19,6 +20,45 @@ declare const enum CdekDeliveryType {
 declare const enum DeliveryMode {
     DOOR = "door",
     OFFICE = "office"
+}
+
+export declare interface iClusterContext {
+    /** Current map zoom, read from the map itself (the store value is debounced). */
+    zoom: number;
+    /** Current map bounds: [top-left, bottom-right]. */
+    bounds: LngLatBounds;
+    /** Cluster position. */
+    coordinates: LngLat;
+    /** Offices inside the cluster. */
+    offices: iOffice[];
+}
+
+/**
+ * Plain (non-reactive) snapshot of what the sidebar shows. Hooks get a new
+ * object every time any of these values changes. Do not mutate it.
+ */
+export declare interface iExtensionContext {
+    mode: DeliveryMode;
+    /** The selected office in office mode, null in door mode or when nothing is selected. Extra fields passed via `offices`/`updateOffices()` are kept. */
+    office: iOffice | null;
+    /** Tariffs shown for the current target. */
+    tariffs: iTariff[];
+    selectedTariff: iTariff | null;
+    /** True after the user pressed the select button (no-tariff mode). */
+    selected: boolean;
+    lang: Lang;
+    currency: string;
+}
+
+export declare interface iExtensions {
+    /** Replaces the address and working hours block of the office sidebar. */
+    officeDescription?: tRenderHook;
+    /** Rendered in the office sidebar after the tariffs / select button. */
+    officeFooter?: tRenderHook;
+    /** Price text of a tariff card. Default: `${delivery_sum} ${currency}`. */
+    formatPrice?: (tariff: iTariff, context: iExtensionContext) => string;
+    /** Called on a cluster marker click. Without it, cluster clicks are ignored (upstream behavior). */
+    onClusterClick?: (context: iClusterContext) => tClusterAction;
 }
 
 declare interface iGeocoderComponent {
@@ -91,6 +131,7 @@ declare interface iWidget extends InferType<typeof widgetSchema> {
     onCalculate?: tCalculateFunction;
     onReady?: tReadyFunction;
     onChoose?: tChooseFunction;
+    extensions?: iExtensions;
 }
 
 declare enum Lang {
@@ -115,7 +156,18 @@ declare type tCalculateFunction = (prices: {
 
 declare type tChooseFunction = (type: DeliveryMode, tariff: iTariff | null, target: iOffice | iGeocoderMember) => void;
 
+/** 'zoom' - zoom in by 2 levels (max 19) centered on the cluster, 'list' - open the office list, nothing - do nothing. */
+export declare type tClusterAction = 'zoom' | 'list' | void;
+
 declare type tReadyFunction = () => void;
+
+/**
+ * Renders into `el`, which belongs to the hook (the widget never touches its content
+ * except for clearing it). Return an HTML string to have it assigned to `el.innerHTML`
+ * (it is not sanitized), or a cleanup function that is called before the next run and
+ * on unmount/destroy().
+ */
+export declare type tRenderHook = (el: HTMLElement, context: iExtensionContext) => string | void | (() => void);
 
 declare class Widget {
     private readonly params;

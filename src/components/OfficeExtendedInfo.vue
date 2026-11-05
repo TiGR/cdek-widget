@@ -8,10 +8,16 @@ import { Popup } from '@/enums/Popup';
 import { OfficeType } from '@/enums/OfficeType';
 import { DeliveryMode } from '@/enums/DeliveryMode';
 import TariffInfo from '@/components/TariffInfo.vue';
+// @ext
+import ExtensionHost from '@/extensions/ExtensionHost.vue';
+import { useExtensionContext, useExtensions } from '@/extensions';
 
 const mapStorage = map();
 const coreStorage = core();
 const { t } = useI18n();
+// @ext
+const extensions = useExtensions();
+const extensionContext = useExtensionContext();
 
 const scrollable = ref<HTMLElement>();
 
@@ -38,7 +44,16 @@ onMounted(() => nextTick(() => {
       </div>
     </div>
     <div ref="scrollable" class=":uno: h-[calc(100%-2rem)] overflow-hidden relative">
-      <div class=":uno: mb-1 px-3">
+      <!-- @ext: officeDescription -->
+      <ExtensionHost
+        v-if="extensions.officeDescription"
+        :hook="extensions.officeDescription"
+        :context="extensionContext"
+        :active="!!extensionContext.office"
+        part="office-description"
+        class=":uno: mb-1 px-3"
+      />
+      <div v-else class=":uno: mb-1 px-3">
         <div class=":uno: text-base font-bold mb-2">{{ mapStorage.exactOffice?.city }}, {{ mapStorage.exactOffice?.address }}</div>
         <div class=":uno: mb-1">
           <div v-for="(time, index) in mapStorage.exactOffice?.work_time?.split(', ')" :key="index">{{ time }}</div>
@@ -46,6 +61,14 @@ onMounted(() => nextTick(() => {
       </div>
       <TariffInfo
         :tariffs="mapStorage.exactOffice?.type === OfficeType.OFFICE ? coreStorage.tariffs.office : coreStorage.tariffs.pickup"
+      />
+      <!-- @ext: officeFooter -->
+      <ExtensionHost
+        v-if="extensions.officeFooter"
+        :hook="extensions.officeFooter"
+        :context="extensionContext"
+        :active="!!extensionContext.office"
+        part="office-footer"
       />
     </div>
   </div>
