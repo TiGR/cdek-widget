@@ -1,6 +1,6 @@
 {
   "name": "@cdek-it/widget",
-  "version": "3.12.1",
+  "version": "4.0.0",
   "description": "CDEK delivery point selection widget",
   "license": "MIT",
   "type": "module",

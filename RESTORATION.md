@@ -55,3 +55,8 @@ Checked by comparing the change between our builds with the change between the p
   (`VITE_DEFAULT_KEY`). Delta matches the published one except the "Widget … has been loaded" log: the
   published 3.12.0 still says 3.11.1 (version not bumped upstream).
 - **3.12.1**: `service.php` only.
+- **4.0.0**: `X-Service-Version` check on every service response (`CdekApi.ensureCompatibleServiceVersion`):
+  a different major version sets `mapLoadError = SERVICE_VERSION_MISMATCH` and `map.serviceVersion`, and
+  `ErrorScreen` asks to update the widget or the service. A missing header is accepted. Delta matches the
+  published one; the only extra noise is module order (the `YandexMapErrorCode` enum is emitted elsewhere,
+  since our import graph already differs from the original one, see the 3.11.1 notes).

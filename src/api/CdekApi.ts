@@ -75,6 +75,8 @@ export default class CdekApi extends AbstractApi {
         signal: this.getPriceAbort.signal,
       },
     ).then((result) => {
+      this.ensureCompatibleServiceVersion(result.headers['x-service-version']);
+
       if (coreStorage.debug) {
         console.debug('[CDEK] Got prices from service', result.data.tariff_codes || []);
       }
@@ -90,6 +92,10 @@ export default class CdekApi extends AbstractApi {
       }
 
       console.error('[CDEK] Service error', e);
+
+      if (map().mapLoadError === YandexMapErrorCode.SERVICE_VERSION_MISMATCH) {
+        throw e;
+      }
 
       return this.mapTariffsWithTypes([]);
     });
@@ -127,6 +133,8 @@ export default class CdekApi extends AbstractApi {
 
     // the first single-item page tells the total count; without the header the service doesn't paginate
     const offices = await this.fetchOfficePage(additionalParams, 1, 1).then((r) => {
+      this.ensureCompatibleServiceVersion(r.headers['x-service-version']);
+
       if (!(r.headers instanceof AxiosHeaders) || !r.headers.has('x-total-elements')) {
         return Promise.all([this.fetchOfficePage(additionalParams, 0, null).then((r) => r.data)]);
       }
@@ -151,6 +159,11 @@ export default class CdekApi extends AbstractApi {
         }
 
         console.error('[CDEK] Service error', e);
+
+        if (map().mapLoadError === YandexMapErrorCode.SERVICE_VERSION_MISMATCH) {
+          throw e;
+        }
+
         map().mapLoadError = YandexMapErrorCode.SERVICE_ERROR;
 
         return [];
@@ -196,6 +209,8 @@ export default class CdekApi extends AbstractApi {
       },
       signal: this.getOfficesByCoordinateAbort.signal,
     }).then((r) => {
+      this.ensureCompatibleServiceVersion(r.headers['x-service-version']);
+
       const data = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
       const officeList = Array.isArray(data) ? data : data?.delivery_points || data?.items || [];
 
@@ -210,6 +225,11 @@ export default class CdekApi extends AbstractApi {
       }
 
       console.error('[CDEK] Service error', e);
+
+      if (map().mapLoadError === YandexMapErrorCode.SERVICE_VERSION_MISMATCH) {
+        throw e;
+      }
+
       map().mapLoadError = YandexMapErrorCode.SERVICE_ERROR;
 
       return [];
@@ -239,6 +259,20 @@ export default class CdekApi extends AbstractApi {
       },
       signal: this.getOfficesAbort ? this.getOfficesAbort.signal : undefined,
     });
+  }
+
+  private ensureCompatibleServiceVersion(serviceVersion: unknown) {
+    // a service of another major version can't talk to this widget; no header means an old or custom service
+    if (typeof serviceVersion !== 'string' || serviceVersion.split('.')[0] === __VERSION__.split('.')[0]) {
+      return;
+    }
+
+    map().$patch({
+      mapLoadError: YandexMapErrorCode.SERVICE_VERSION_MISMATCH,
+      serviceVersion,
+    });
+
+    throw new Error(`Incompatible service version: ${serviceVersion}`);
   }
 
   // CDEK API delivery point -> iOffice; weights come in kilograms

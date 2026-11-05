@@ -20,6 +20,8 @@ export default defineStore('map', () => {
   const searchStorage = search();
 
   const mapLoadError = ref<YandexMapErrorCode | null>(null);
+  // X-Service-Version of an incompatible service, see CdekApi.ensureCompatibleServiceVersion
+  const serviceVersion = ref<string | null>(null);
   // point clicked or found by search in the door delivery mode
   const exactPoint = ref<LngLat | null>(null);
   const exactOffice = ref<iOffice | null>(null);
@@ -219,6 +221,7 @@ export default defineStore('map', () => {
     exactOffice,
     searchedOffices,
     mapLoadError,
+    serviceVersion,
     location,
     offices,
     packageSuitedOffices,
